@@ -415,7 +415,7 @@ class LazySupervisedDataset(Dataset):
 
         # Load both ego and exo data
         list_data_dict = json.load(open(data_path, "r"))
-        ego_list_data_dict = json.load(open('/data/mgovind/Video-ChatGPT/scripts/ego-09-01.json', "r"))
+        ego_list_data_dict = json.load(open('/data/mgovind/Video-ChatGPT/instruction_data/ego-09-01.json', "r"))
 
         logging.warning("Formatting inputs... Skip in lazy mode")
         self.tokenizer = tokenizer
@@ -428,12 +428,12 @@ class LazySupervisedDataset(Dataset):
         # self.min_len = min(len(self.list_data_dict), len(self.ego_list_data_dict))
 
     def __len__(self):
-        return len(self.ego_list_data_dict)
+        return len(self.list_data_dict)
 
     def __getitem__(self, i) -> Dict[str, torch.Tensor]:
         # Handle cases where one dataset is smaller by resampling
-        exo_idx = i % len(self.list_data_dict)
-        ego_idx = i 
+        exo_idx = i 
+        ego_idx = i % len(self.ego_list_data_dict)
 
         sources = self.list_data_dict[exo_idx]
         ego_sources = self.ego_list_data_dict[ego_idx]
@@ -445,8 +445,8 @@ class LazySupervisedDataset(Dataset):
         # Process exo video
         if 'video' in sources[0]:
             exo_video_file = self.list_data_dict[exo_idx]['video']
-            # video_folder = self.multimodal_cfg['video_folder']
-            video_folder = '/data/NTU_combination_video_features'
+            video_folder = self.multimodal_cfg['video_folder']
+            # video_folder = '/data/NTU_combination_video_features'
             
             
             with open(f"{video_folder}/{exo_video_file}", "rb") as f:
@@ -465,7 +465,7 @@ class LazySupervisedDataset(Dataset):
             with open(f"{video_folder}/{ego_video_file}", "rb") as f:
                 ego_features = pickle.load(f)
 
-            ego_sources = preprocess_multimodal_for_ego(
+            ego_sources = preprocess_multimodal(
                 copy.deepcopy([e["conversations"] for e in ego_sources]),
                 self.multimodal_cfg, cur_token_len)
 
@@ -579,7 +579,8 @@ class DataCollatorForSupervisedDataset(object):
         batch = dict(
             input_ids=input_ids,
             labels=labels,
-            attention_mask=input_ids.ne(self.tokenizer.pad_token_id)
+            attention_mask=input_ids.ne(self.tokenizer.pad_token_id),
+            is_train='train'
         )
         
         features = features + ego_features

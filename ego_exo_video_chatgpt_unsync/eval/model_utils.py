@@ -111,9 +111,9 @@ def initialize_model(model_name, projection_path=None):
     mm_use_vid_start_end = True
 
     # Add tokens to tokenizer
-    tokenizer.add_tokens([DEFAULT_VIDEO_PATCH_TOKEN, DEFAULT_EGO_PATCH_TOKEN], special_tokens=True)
+    tokenizer.add_tokens([DEFAULT_VIDEO_PATCH_TOKEN], special_tokens=True)
     if mm_use_vid_start_end:
-        tokenizer.add_tokens([DEFAULT_VID_START_TOKEN, DEFAULT_VID_END_TOKEN, DEFAULT_EGO_START_TOKEN , DEFAULT_EGO_END_TOKEN], special_tokens=True)
+        tokenizer.add_tokens([DEFAULT_VID_START_TOKEN, DEFAULT_VID_END_TOKEN], special_tokens=True)
 
     # Resize token embeddings of the model
     model.resize_token_embeddings(len(tokenizer))
@@ -145,13 +145,13 @@ def initialize_model(model_name, projection_path=None):
     # Configure vision model
     vision_config = model.get_model().vision_config
     vision_config.vid_patch_token = tokenizer.convert_tokens_to_ids([DEFAULT_VIDEO_PATCH_TOKEN])[0]
-    vision_config.ego_patch_token = tokenizer.convert_tokens_to_ids([DEFAULT_EGO_PATCH_TOKEN])[0]
+    # vision_config.ego_patch_token = tokenizer.convert_tokens_to_ids([DEFAULT_EGO_PATCH_TOKEN])[0]
     vision_config.use_vid_start_end = mm_use_vid_start_end
     if mm_use_vid_start_end:
         vision_config.vid_start_token, vision_config.vid_end_token = tokenizer.convert_tokens_to_ids(
             [DEFAULT_VID_START_TOKEN, DEFAULT_VID_END_TOKEN])
-        vision_config.ego_start_token, vision_config.ego_end_token = tokenizer.convert_tokens_to_ids(
-            [DEFAULT_EGO_START_TOKEN, DEFAULT_EGO_END_TOKEN])    
+        # vision_config.ego_start_token, vision_config.ego_end_token = tokenizer.convert_tokens_to_ids(
+        #     [DEFAULT_EGO_START_TOKEN, DEFAULT_EGO_END_TOKEN])    
 
     # Set video token length
     video_token_len = 356

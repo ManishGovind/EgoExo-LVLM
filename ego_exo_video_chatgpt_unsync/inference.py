@@ -3,20 +3,20 @@ from ego_exo_video_chatgpt_unsync.model.utils import KeywordsStoppingCriteria
 import torch
 
 # Define constants
-# DEFAULT_VIDEO_TOKEN = "<video>"
-# DEFAULT_VIDEO_PATCH_TOKEN = "<vid_patch>"
-# DEFAULT_VID_START_TOKEN = "<vid_start>"
-# DEFAULT_VID_END_TOKEN = "<vid_end>"
-
 DEFAULT_VIDEO_TOKEN = "<video>"
-DEFAULT_VIDEO_PATCH_TOKEN = "<exo_vid_patch>"
-DEFAULT_VID_START_TOKEN = "<exo_vid_start>"
-DEFAULT_VID_END_TOKEN = "<exo_vid_end>"
+DEFAULT_VIDEO_PATCH_TOKEN = "<vid_patch>"
+DEFAULT_VID_START_TOKEN = "<vid_start>"
+DEFAULT_VID_END_TOKEN = "<vid_end>"
 
-DEFAULT_EGO_TOKEN = "<ego_video>"
-DEFAULT_EGO_PATCH_TOKEN = "<ego_vid_patch>"
-DEFAULT_EGO_START_TOKEN = "<ego_vid_start>"
-DEFAULT_EGO_END_TOKEN = "<ego_vid_end>"
+# DEFAULT_VIDEO_TOKEN = "<video>"
+# DEFAULT_VIDEO_PATCH_TOKEN = "<exo_vid_patch>"
+# DEFAULT_VID_START_TOKEN = "<exo_vid_start>"
+# DEFAULT_VID_END_TOKEN = "<exo_vid_end>"
+
+# DEFAULT_EGO_TOKEN = "<ego_video>"
+# DEFAULT_EGO_PATCH_TOKEN = "<ego_vid_patch>"
+# DEFAULT_EGO_START_TOKEN = "<ego_vid_start>"
+# DEFAULT_EGO_END_TOKEN = "<ego_vid_end>"
 
 def get_spatio_temporal_features_torch(features):
     """
@@ -72,18 +72,16 @@ def video_chatgpt_infer(video_frames, question, conv_mode, model, vision_tower, 
     """
 
     # Prepare question string for the model
+
+    if model.get_model().vision_config.use_vid_start_end:
+            qs = question + '\n' + DEFAULT_VID_START_TOKEN + DEFAULT_VIDEO_PATCH_TOKEN * video_token_len + DEFAULT_VID_END_TOKEN
+    else:
+            qs = question + '\n' + DEFAULT_VIDEO_PATCH_TOKEN * video_token_len
+
     if is_exo:
         flag = "exo"
-        if model.get_model().vision_config.use_vid_start_end:
-            qs = question + '\n' + DEFAULT_VID_START_TOKEN + DEFAULT_VIDEO_PATCH_TOKEN * video_token_len + DEFAULT_VID_END_TOKEN
-        else:
-            qs = question + '\n' + DEFAULT_VIDEO_PATCH_TOKEN * video_token_len
     else:
-        flag = "ego"
-        if model.get_model().vision_config.use_vid_start_end:
-            qs = question + '\n' + DEFAULT_EGO_START_TOKEN + DEFAULT_EGO_PATCH_TOKEN * video_token_len + DEFAULT_EGO_END_TOKEN
-        else:
-            qs = question + '\n' + DEFAULT_EGO_PATCH_TOKEN * video_token_len       
+        flag = "ego"     
     
     # Prepare conversation prompt
     conv = conv_templates[conv_mode].copy()
@@ -120,6 +118,7 @@ def video_chatgpt_infer(video_frames, question, conv_mode, model, vision_tower, 
             input_ids,
             video_spatio_temporal_features=video_spatio_temporal_features.unsqueeze(0),
             is_exo=flag,
+            is_train='test',
             do_sample=True,
             temperature=0.2,
             max_new_tokens=1024,

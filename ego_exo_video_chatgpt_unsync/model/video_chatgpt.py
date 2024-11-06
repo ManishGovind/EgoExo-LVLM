@@ -5,15 +5,13 @@ from torch.nn import CrossEntropyLoss
 from transformers import AutoConfig, AutoModelForCausalLM, LlamaConfig, LlamaModel, LlamaForCausalLM
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 
-DEFAULT_VIDEO_TOKEN = "<video>"
-DEFAULT_VIDEO_PATCH_TOKEN = "<exo_vid_patch>"
-DEFAULT_VID_START_TOKEN = "<exo_vid_start>"
-DEFAULT_VID_END_TOKEN = "<exo_vid_end>"
 
-DEFAULT_EGO_TOKEN = "<ego_video>"
-DEFAULT_EGO_PATCH_TOKEN = "<ego_vid_patch>"
-DEFAULT_EGO_START_TOKEN = "<ego_vid_start>"
-DEFAULT_EGO_END_TOKEN = "<ego_vid_end>"
+DEFAULT_VIDEO_TOKEN = "<video>"
+DEFAULT_VIDEO_PATCH_TOKEN = "<vid_patch>"
+DEFAULT_VID_START_TOKEN = "<vid_start>"
+DEFAULT_VID_END_TOKEN = "<vid_end>"
+
+
 
 
 class VisionConfig:
@@ -94,6 +92,7 @@ class VideoChatGPTLlamaModel(LlamaModel):
             output_hidden_states: Optional[bool] = None,
             video_spatio_temporal_features: Optional[torch.FloatTensor] = None,
             is_exo: Optional[str] = None,
+            is_train: Options[str] = None,
             return_dict: Optional[bool] = None,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         orig_embeds_params = getattr(self, 'orig_embeds_params', None)
@@ -106,18 +105,21 @@ class VideoChatGPTLlamaModel(LlamaModel):
             inputs_embeds = self.embed_tokens(input_ids)
 
         if (input_ids.shape[1] != 1 or self.training) and video_spatio_temporal_features is not None:
-            # B = video_spatio_temporal_features.shape[0] 
-            # # print(B)
-            # exo_video_features = self.mm_projector(video_spatio_temporal_features[:B//2])       # [2,356 , 4096]
-            # ego_video_features = self.mm_projector_ego(video_spatio_temporal_features[B//2 :])  #[2,356 , 4096]
-            # video_features = torch.cat((exo_video_features, ego_video_features), dim=0)
+            if is_train == 'train':
+                B = video_spatio_temporal_features.shape[0] 
+                # print(B)
+                exo_video_features = self.mm_projector(video_spatio_temporal_features[:B//2])       # [2,356 , 4096]
+                ego_video_features = self.mm_projector_ego(video_spatio_temporal_features[B//2 :])  #[2,356 , 4096]
+                video_features = torch.cat((exo_video_features, ego_video_features), dim=0)
             
-            if is_exo == 'exo':
-                print("exo projection")
-                video_features = self.mm_projector(video_spatio_temporal_features)
-            elif is_exo == 'ego' :    
-                print("ego projection")
-                video_features = self.mm_projector_ego(video_spatio_temporal_features)
+            ## Inference 
+            else:
+                if is_exo == 'exo':
+                    print("exo projection")
+                    video_features = self.mm_projector(video_spatio_temporal_features)
+                elif is_exo == 'ego' :    
+                    print("ego projection")
+                    video_features = self.mm_projector_ego(video_spatio_temporal_features)
             
             dummy_video_features = torch.zeros(video_features.shape[1], 1024, device=inputs_embeds.device,
                                                dtype=inputs_embeds.dtype)
@@ -220,6 +222,7 @@ class VideoChatGPTLlamaForCausalLM(LlamaForCausalLM):
             output_hidden_states: Optional[bool] = None,
             video_spatio_temporal_features: Optional[torch.FloatTensor] = None,
             is_exo: Optional[str] = None,
+            is_train: Optional[str] = None,
             return_dict: Optional[bool] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -239,7 +242,8 @@ class VideoChatGPTLlamaForCausalLM(LlamaForCausalLM):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
             video_spatio_temporal_features=video_spatio_temporal_features,
-            is_exo=is_exo
+            is_exo=is_exo,
+            is_train=is_train
         )
 
         hidden_states = outputs[0]
@@ -288,7 +292,8 @@ class VideoChatGPTLlamaForCausalLM(LlamaForCausalLM):
                 "use_cache": kwargs.get("use_cache"),
                 "attention_mask": attention_mask,
                 "video_spatio_temporal_features": kwargs.get("video_spatio_temporal_features", None),
-                "is_exo":kwargs.get("is_exo", None)
+                "is_exo":kwargs.get("is_exo", None),
+                "is_train":kwargs.get("is_train",None)
             }
         )
         return model_inputs
@@ -297,17 +302,14 @@ class VideoChatGPTLlamaForCausalLM(LlamaForCausalLM):
                                     tune_mm_mlp_adapter=False, pretrain_mm_mlp_adapter=None):
         vision_config = self.get_model().vision_config
         vision_config.use_vid_start_end = mm_use_vid_start_end
-        tokenizer.add_tokens([DEFAULT_VIDEO_PATCH_TOKEN, DEFAULT_EGO_PATCH_TOKEN], special_tokens=True)
+        tokenizer.add_tokens([DEFAULT_VIDEO_PATCH_TOKEN], special_tokens=True)
         self.resize_token_embeddings(len(tokenizer))
 
         if mm_use_vid_start_end:
-            num_new_tokens = tokenizer.add_tokens([DEFAULT_VID_START_TOKEN, DEFAULT_VID_END_TOKEN , DEFAULT_EGO_START_TOKEN , DEFAULT_EGO_END_TOKEN], special_tokens=True)
+            num_new_tokens = tokenizer.add_tokens([DEFAULT_VID_START_TOKEN, DEFAULT_VID_END_TOKEN], special_tokens=True)
             self.resize_token_embeddings(len(tokenizer))
             vision_config.vid_start_token, vision_config.vid_end_token = tokenizer.convert_tokens_to_ids(
-                [DEFAULT_VID_START_TOKEN, DEFAULT_VID_END_TOKEN])
-
-            vision_config.ego_start_token, vision_config.ego_end_token = tokenizer.convert_tokens_to_ids(
-                [DEFAULT_EGO_START_TOKEN, DEFAULT_EGO_END_TOKEN])    
+                [DEFAULT_VID_START_TOKEN, DEFAULT_VID_END_TOKEN])   
 
             if num_new_tokens > 0:
                 input_embeddings = self.get_input_embeddings().weight.data
@@ -343,7 +345,7 @@ class VideoChatGPTLlamaForCausalLM(LlamaForCausalLM):
                         f"Current: {input_embeddings.shape}. Numer of new tokens: {num_new_tokens}.")
 
         vision_config.vid_patch_token = tokenizer.convert_tokens_to_ids([DEFAULT_VIDEO_PATCH_TOKEN])[0]
-        vision_config.ego_patch_token = tokenizer.convert_tokens_to_ids([DEFAULT_EGO_PATCH_TOKEN])[0]
+        # vision_config.ego_patch_token = tokenizer.convert_tokens_to_ids([DEFAULT_EGO_PATCH_TOKEN])[0]
 
 AutoConfig.register("VideoChatGPT", VideoChatGPTConfig)
 AutoModelForCausalLM.register(VideoChatGPTConfig, VideoChatGPTLlamaForCausalLM)
